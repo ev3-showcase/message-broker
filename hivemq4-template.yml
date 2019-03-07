@@ -1,0 +1,178 @@
+---
+apiVersion: template.openshift.io/v1
+kind: Template
+labels:
+  template: hivemq
+message: |-
+  The following service(s) have been created in your project: ${NAME}.
+
+  It's heavily based on https://hub.docker.com/r/hivemq/hivemq4/
+metadata:
+  annotations:
+    description: A hivemq4 cluster, which is a mqtt broker with clustering
+      abilities.
+    openshift.io/display-name: HiveMQ4 Cluster for MQTT brokering.
+    openshift.io/documentation: https://www.hivemq.com/docs/4/hivemq/introduction.html
+    openshift.io/long-description: HiveMQ is a MQTT broker tailored specifically for 
+      enterprises, which find themselves in the emerging age of Machine-to-Machine communication
+      (M2M) and the Internet of Things.
+    openshift.io/provider-display-name: T-Systems International GmbH, PU Public Cloud, MCS PaaS
+    tags: hivemq
+  name: hivemq-cluster
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}-discovery
+    labels:
+      app: ${NAME}
+    annotations:
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  spec:
+    selector:
+      app: ${NAME}
+    ports:
+      - protocol: TCP
+        port: 1883
+        targetPort: 1883
+    clusterIP: None
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}-mqtt
+    annotations:
+      description: Exposes the HiveMQ MQTT interface via NodePort
+    labels:
+      app: ${NAME}
+    annotations:
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  spec:
+    selector:
+      app: ${NAME}
+    ports:
+      - name: 1883-tcp
+        protocol: TCP
+        port: 1883
+        targetPort: 1883
+    clusterIP: None
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}-control-center
+    labels:
+      app: ${NAME}
+    annotations:
+      description: Exposes the HiveMQ admin interface
+  spec:
+    selector:
+      app: ${NAME}
+    ports:
+      - name: 8080-tcp
+        protocol: TCP
+        port: 8080
+        targetPort: 8080
+    sessionAffinity: ClientIP
+    type: ClusterIP
+#- apiVersion: 1
+#  kind: Secret
+#  metadata:
+#    name: ${NAME}-creds
+#  type: Opaque 
+#  data: 
+#    username: dmFsdWUtMQ0K 
+#    password: dmFsdWUtMg0KDQo=
+#  stringData: 
+#    hostname: myapp.mydomain.com 
+#
+
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      description: Defines how to deploy the application server
+      template.alpha.openshift.io/wait-for-ready: "true"
+    name: ${NAME}
+    labels:
+      app: ${NAME}
+  spec:
+    replicas: 3
+    strategy:
+      type: Rolling
+    selector:
+      app: ${NAME}
+    template:
+      metadata:
+        name: ${NAME}
+        labels:
+          app: ${NAME}
+      spec:
+        containers:
+        - name: hivemq
+          image: hivemq/hivemq4:dns-latest
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+            name: hivemq-ctrl-ui
+          - containerPort: 1883
+            protocol: TCP
+            name: hivemq-mqtt
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          - name: HIVEMQ_DNS_DISCOVERY_ADDRESS
+            value: ${NAME}-discovery.$(POD_NAMESPACE).svc.cluster.local
+          - name: HIVEMQ_DNS_DISCOVERY_TIMEOUT
+            value: ${HIVEMQ_DNS_DISCOVERY_TIMEOUT}
+          - name: HIVEMQ_DNS_DISCOVERY_INTERVAL
+            value: ${HIVEMQ_DNS_DISCOVERY_INTERVAL}
+          - name: HIVEMQ_CONTROL_CENTER_USER
+            value: ${HIVEMQ_CONTROL_CENTER_USER}
+          - name: HIVEMQ_CONTROL_CENTER_PASSWORD
+            value: ${HIVEMQ_CONTROL_CENTER_PASSWORD}
+          readinessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: 1883
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 60
+parameters:
+- description: The name assigned to all of the frontend objects defined in this template.
+  displayName: Name
+  name: NAME
+  required: true
+  value: hivemq-example
+- description: The namespace the cluster is running in
+  displayName: HiveMQ Current Namespace
+  name: HIVEMQ_NAMESPACE
+  required: true
+- description: How long HiveMQ should wait until a node is considered timed out
+  displayName: DNS Discovery Timeout
+  name: HIVEMQ_DNS_DISCOVERY_TIMEOUT
+  required: true
+  value: "20"
+- description: How often HiveMQ should query the DNS asking for nodes
+  name: HIVEMQ_DNS_DISCOVERY_INTERVAL
+  displayName: DNS Discovery Timeout
+  required: true
+  value: "21"
+- description: Username for the Control Center
+  name: HIVEMQ_CONTROL_CENTER_USER
+  displayName: HiveMQ Control Center Username
+  required: true
+  value: admin
+- description: Password for the HiveMQ Control Center User as sha256
+  name: HIVEMQ_CONTROL_CENTER_PASSWORD
+  displayName: HiveMQ Control Center Password
+  required: true
+  value: f53c9c1e9a06cb05b4f2b9fb891484cd4e16fed85701809515eb49cc010e9624
