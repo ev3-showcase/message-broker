@@ -160,4 +160,4 @@ parameters:
   name: HIVEMQ_WEB_UI_PASSWORD
   displayName: HiveMQ Control Center Password
   required: true
-  value: f53c9c1e9a06cb05b4f2b9fb891484cd4e16fed85701809515eb49cc010e9624
+  value: a68fc32fc49fc4d04c63724a1f6d0c90442209c46dba6975774cde5e5149caf8
