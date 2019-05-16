@@ -24,7 +24,17 @@ oc new-app --template=hivemq4-cluster
 ## Accessing the Control Interface
 To get access to the WebUI, expose the service which is responsible for the Control Center (determine by name by running `oc get svc`) with `oc expose svc/<servicename>`
 
-**Note** Currently there appears to be a bug for both images where login via custom credentials is not possible. I highly suggest NOT using the Control Interface until it's fixed. For more info take a look at the [Github Bug Report](https://github.com/hivemq/hivemq4-docker-images/issues/5)
+Logging in requires the correct login parameters. Those can be set via environment variables or during the deployment. Assuming we want to use `user`:`secretpassword` as user:pw credentials, do the following:
+
+* chain username and password together
+* sha256 hash them
+* use the username as username, the hash as password
+
+Under linux, this could be done by issuing `echo -n usersecretpassword | sha256sum`
+
+For our example this would then look like `user` with the hash `60355f3abbfb4def49ac8b645b5ec3394040795c33bdfd6a841eccdc32869fe7`. Create the app as `oc new-app --template=hivemq4-cluster -p HIVEMQ_CONTROL_CENTER_USER=user -p HIVEMQ_CONTROL_CENTER_PASSWORD=60355f3abbfb4def49ac8b645b5ec3394040795c33bdfd6a841eccdc32869fe7`.
+
+If you want to change the data later on, you can simply modify the environment variables in the Deployment Configuration.
 
 ## Labels
 Each item of the template has an `app` label, which defaults to `hivemq4-example`. This can be overwritten by using the `NAME` parameter:
