@@ -46,4 +46,4 @@ oc new-app --template=hivemq4-cluster -p NAME=mqtt-cluster
 To remove all items created by this template, use
 `oc delete all -l app=hivemq4-example`
 
-Change the value of the label to whatever you specified for the `NAME` variable during deployment.
+Change the value of the label to whatever you specified for the `NAME` variable during deployment. Remove the configmap afterwards, it won't be covered by the `all` statement. You can ask for a list of configmaps via `oc get cm`.

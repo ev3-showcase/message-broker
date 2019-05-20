@@ -17,9 +17,152 @@ metadata:
       enterprises, which find themselves in the emerging age of Machine-to-Machine communication
       (M2M) and the Internet of Things.
     openshift.io/provider-display-name: T-Systems International GmbH, PU Public Cloud, MCS PaaS
-    tags: hivemq4
+    tags: "hivemq4,middleware,iot"
   name: hivemq4-cluster
 objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ${NAME}-cfg
+    labels:
+      app: ${NAME}
+  data:
+    config.xml: |
+      <?xml version="1.0"?>
+      <hivemq xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="hivemq-config.xsd">
+  
+          <listeners>
+              <tcp-listener>
+                  <port>1883</port>
+                  <bind-address>0.0.0.0</bind-address>
+              </tcp-listener>
+              <websocket-listener>
+                  <port>8000</port>
+                  <bind-address>0.0.0.0</bind-address>
+                  <path>/mqtt</path>
+                  <name>websocket-listener</name>
+                  <subprotocols>
+                      <subprotocol>mqttv3.1</subprotocol>
+                      <subprotocol>mqtt</subprotocol>
+                  </subprotocols>
+                  <allow-extensions>true</allow-extensions>
+              </websocket-listener>
+          </listeners>
+          <control-center>
+              <listeners>
+                  <http>
+                      <port>8080</port>
+                      <bind-address>0.0.0.0</bind-address>
+                  </http>
+              </listeners>
+              <users>
+                  <user>
+                      <name>${HIVEMQ_CONTROL_CENTER_USER}</name>
+                      <password>${HIVEMQ_CONTROL_CENTER_PASSWORD}</password>
+                  </user>
+              </users>
+          </control-center>
+  
+          <cluster>
+              <transport>
+                  <udp>
+                      <bind-address>${HIVEMQ_BIND_ADDRESS}</bind-address>
+                      <bind-port>${HIVEMQ_CLUSTER_PORT}</bind-port>
+                      <!-- disable multicast to avoid accidental cluster forming -->
+                      <multicast-enabled>false</multicast-enabled>
+                  </udp>
+              </transport>
+              <enabled>true</enabled>
+              <discovery>
+                  <extension>
+                      <reload-interval>${HIVEMQ_DNS_DISCOVERY_INTERVAL}</reload-interval>
+                  </extension>
+              </discovery>
+          </cluster>
+      </hivemq>
+    logback.xml: |
+      <configuration scan="true" scanPeriod="60 seconds">
+  
+          <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+              <encoder>
+                  <pattern>%-30(%d %level)- %msg%n%ex</pattern>
+              </encoder>
+          </appender>
+  
+          <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+              <file>${hivemq.log.folder}/hivemq.log</file>
+              <append>true</append>
+  
+              <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                  <!-- daily rollover -->
+                  <fileNamePattern>${hivemq.log.folder}/hivemq.%d{yyyy-MM-dd}.log</fileNamePattern>
+  
+                  <!-- keep 30 days' worth of history -->
+                  <maxHistory>30</maxHistory>
+              </rollingPolicy>
+              <encoder>
+                  <pattern>%-30(%d %level)- %msg%n%ex</pattern>
+              </encoder>
+          </appender>
+  
+          <appender name="MIGRATIONS-FILE" class="ch.qos.logback.core.FileAppender">
+              <file>${hivemq.log.folder}/migration.log</file>
+              <append>true</append>
+              <encoder>
+                  <pattern>%-30(%d %level)- %msg%n%ex</pattern>
+              </encoder>
+          </appender>
+  
+          <appender name="EVENT-FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+              <file>${hivemq.log.folder}/event.log</file>
+              <append>true</append>
+              <encoder>
+                  <pattern>%-24(%d)- %msg%n%ex</pattern>
+              </encoder>
+              <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+                  <fileNamePattern>${hivemq.log.folder}/event-%i.log.gz</fileNamePattern>
+                  <minIndex>1</minIndex>
+                  <maxIndex>5</maxIndex>
+              </rollingPolicy>
+              <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+                  <maxFileSize>100MB</maxFileSize>
+              </triggeringPolicy>
+          </appender>
+  
+          <logger name="event.client-connected" level="DEBUG" additivity="false">
+              <appender-ref ref="EVENT-FILE"/>
+          </logger>
+  
+          <logger name="event.client-disconnected" level="DEBUG" additivity="false">
+              <appender-ref ref="EVENT-FILE"/>
+          </logger>
+  
+          <logger name="event.message-dropped" level="DEBUG" additivity="false">
+              <appender-ref ref="EVENT-FILE"/>
+          </logger>
+  
+          <logger name="event.client-session-expired" level="DEBUG" additivity="false">
+              <appender-ref ref="EVENT-FILE"/>
+          </logger>
+  
+          <logger name="migrations" level="DEBUG" additivity="false">
+              <appender-ref ref="MIGRATIONS-FILE"/>
+          </logger>
+  
+          <root level="INFO">
+              <appender-ref ref="FILE"/>
+              <appender-ref ref="CONSOLE"/>
+          </root>
+  
+          <logger name="jetbrains.exodus" level="WARN"/>
+          <logger name="org.eclipse.jetty" level="ERROR"/>
+          <logger name="com.google.common.util.concurrent.Futures.CombinedFuture" level="OFF"/>
+          <logger name="oshi" level="ERROR"/>
+          <logger name="org.jgroups" level="INFO"/>
+  
+      </configuration>
+
 - apiVersion: v1
   kind: Service
   metadata:
@@ -77,6 +220,25 @@ objects:
     type: ClusterIP
 
 - apiVersion: v1
+  kind: Service
+  metadata:
+    name: ${NAME}-mqtt-websocket
+    labels:
+      app: ${NAME}
+    annotations:
+      description: Exposes the HiveMQ MQTT Interface via Websocket
+  spec:
+    selector:
+      app: ${NAME}
+    ports:
+      - name: 8000-tcp
+        protocol: TCP
+        port: 8000
+        targetPort: 8000
+    sessionAffinity: ClientIP
+    type: ClusterIP
+
+- apiVersion: v1
   kind: DeploymentConfig
   metadata:
     annotations:
@@ -107,6 +269,9 @@ objects:
           - containerPort: 1883
             protocol: TCP
             name: hivemq4-mqtt
+          - containerPort: 8000
+            protocol: TCP
+            name: hivemq4-websoc
           env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -135,6 +300,13 @@ objects:
             initialDelaySeconds: 30
             periodSeconds: 60
             failureThreshold: 60
+          volumeMounts:
+            - name: config-volume
+              mountPath: /opt/hivemq/conf/
+        volumes:
+        - name: config-volume
+          configMap:
+            name: ${NAME}-cfg
 parameters:
 - description: The name assigned to all of the frontend objects defined in this template.
   displayName: Name
